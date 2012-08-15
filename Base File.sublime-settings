@@ -24,5 +24,9 @@
 	// of those must be kept next to the = for the operator to be parsed
 	"alignment_prefix_chars": [
 		"+", "-", "&", "|", "<", ">", "!", "~", "%", "/", "*", "."
-	]
+	],
+
+	// If the last block of characters on a line should be aligned if there is
+	// no = sign on the line. This is useful for aligning variable declarations.
+	"alignment_align_var_defs": true
 }

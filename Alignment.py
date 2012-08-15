@@ -125,15 +125,42 @@ class AlignmentCommand(sublime_plugin.TextCommand):
                 max_col = 0
                 for row in line_nums:
                     pt = view.text_point(row, 0)
+                    # Find the first character we are going to align correctly
                     matching_region = view.find(alignment_pattern, pt)
-                    if not matching_region:
-                        continue
-                    matching_char_pt = matching_region.a
 
-                    insert_pt = matching_char_pt
+                    if settings.get('alignment_align_var_defs') and \
+                       (not matching_region or \
+                       view.rowcol(matching_region.a)[0] != row):
+
+                        var_define_align = True
+
+                        # If we didn't find one of the specified alignment
+                        #  characters, try to align the last word. This is
+                        #  useful for variable declarations.
+                        l = view.line(pt)
+                        found_word = False
+                        for i in range(l.b, l.a, -1):
+                            char = view.substr(i)
+                            if found_word:
+                                if char == ' ' or char == '\t':
+                                    matching_char_pt = i
+                                    insert_pt = i
+                                    break
+                            else:
+                                if char != ' ' and char != '\t' and char != '\n':
+                                    found_word = True
+                        if not found_word:
+                            continue
+
+                    else:
+                        matching_char_pt = matching_region.a
+                        insert_pt = matching_region.a
+                        var_define_align = False
+
                     # If the equal sign is part of a multi-character
                     # operator, bring the first character forward also
-                    if view.substr(insert_pt-1) in alignment_prefix_chars:
+                    if view.substr(insert_pt-1) in alignment_prefix_chars and \
+                       var_define_align == False:
                         insert_pt -= 1
 
                     space_pt = insert_pt
