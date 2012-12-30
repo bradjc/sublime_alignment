@@ -1,0 +1,20 @@
+uint8_t a = 6;
+uint16_t   b;
+
+
+struct person_t p;
+struct person_t* p2 = {a, 4, 5};
+uint8_t time;
+uint8_t hours = 0;
+uint16_t wait = hours;
+
+
+std::pair<int, char*> idname;
+int b;
+
+
+test_var = 1;
+new_var = 2;
+a,b = func_call(1, 2);
+c,d, e = getcall(7, 6);
+
