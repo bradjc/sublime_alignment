@@ -64,12 +64,13 @@ class AlignmentCommand(sublime_plugin.TextCommand):
         trim_trailing_white_space = \
             settings.get('trim_trailing_white_space_on_save')
 
+        # Indent all selected lines the same distance
         if settings.get('align_indent'):
             # Align the left edges by first finding the left edge
             for row in line_nums:
                 pt = view.text_point(row, 0)
 
-                # Skip blank lines when the user times trailing whitespace
+                # Skip blank lines when the user trims trailing whitespace
                 line = view.line(pt)
                 if trim_trailing_white_space and line.a == line.b:
                     continue
@@ -114,99 +115,104 @@ class AlignmentCommand(sublime_plugin.TextCommand):
                 view.insert(edit, pt, (' ' if use_spaces else '\t') *
                     length)
 
-            perform_mid_line = max_length == 0
+            if max_length != 0:
+                # I'm not sure why just yet, but stop now
+                return
+           # perform_mid_line = max_length == 0
 
-        else:
-            perform_mid_line = True
-        
+       
 
+        # Do the actual alignment of the symbols
         alignment_chars        = settings.get('alignment_chars') or []
         alignment_prefix_chars = settings.get('alignment_prefix_chars') or []
         alignment_space_chars  = settings.get('alignment_space_chars') or []
 
         alignment_pattern = '|'.join([re.escape(ch) for ch in alignment_chars])
 
-        if perform_mid_line and alignment_chars:
-            points = []
-            max_col = 0
-            for row in line_nums:
-                pt = view.text_point(row, 0)
+        if not alignment_chars:
+            # nothing to align on
+            return
 
-                # Determine if the line is a variable declaration or just
-                #  a variable setting operation
+        points  = []
+        max_col = 0
+        for row in line_nums:
+            pt = view.text_point(row, 0)
 
-                # Find the first character we are going to align correctly
-                matching_region = view.find(alignment_pattern, pt)
+            # Determine if the line is a variable declaration or just
+            #  a variable setting operation
 
-                if settings.get('alignment_align_var_defs') and \
-                   (not matching_region or \
-                   view.rowcol(matching_region.a)[0] != row):
+            # Find the first character we are going to align correctly
+            matching_region = view.find(alignment_pattern, pt)
 
-                    var_define_align = True
+            if settings.get('alignment_align_var_defs') and \
+               (not matching_region or \
+               view.rowcol(matching_region.a)[0] != row):
 
-                    # If we didn't find one of the specified alignment
-                    #  characters, try to align the last word. This is
-                    #  useful for variable declarations.
-                    l = view.line(pt)
-                    found_word = False
-                    for i in range(l.b, l.a, -1):
-                        char = view.substr(i)
-                        if found_word:
-                            if char == ' ' or char == '\t':
-                                matching_char_pt = i
-                                insert_pt = i
-                                break
-                        else:
-                            if char != ' ' and char != '\t' and char != '\n':
-                                found_word = True
-                    if not found_word:
-                        continue
+                var_define_align = True
 
-                else:
-                    matching_char_pt = matching_region.a
-                    insert_pt        = matching_region.a
-                    var_define_align = False
-
-                # If the equal sign is part of a multi-character
-                # operator, bring the first character forward also
-                if view.substr(insert_pt-1) in alignment_prefix_chars and \
-                   var_define_align == False:
-                    insert_pt -= 1
-
-                space_pt = insert_pt
-                while view.substr(space_pt-1) in [' ', '\t']:
-                    space_pt -= 1
-                    # Replace tabs with spaces for consistent indenting
-                    if view.substr(space_pt) == '\t':
-                        view.replace(edit, sublime.Region(space_pt,
-                            space_pt+1), ' ' * tab_size)
-                        matching_char_pt += tab_size - 1
-                        insert_pt += tab_size - 1
-
-                if view.substr(matching_char_pt) in alignment_space_chars:
-                    space_pt += 1
-
-                # If the next equal sign is not on this line, skip the line
-                if view.rowcol(matching_char_pt)[0] != row:
+                # If we didn't find one of the specified alignment
+                #  characters, try to align the last word. This is
+                #  useful for variable declarations.
+                l = view.line(pt)
+                found_word = False
+                for i in range(l.b, l.a, -1):
+                    char = view.substr(i)
+                    if found_word:
+                        if char == ' ' or char == '\t':
+                            matching_char_pt = i
+                            insert_pt = i
+                            break
+                    else:
+                        if char != ' ' and char != '\t' and char != '\n':
+                            found_word = True
+                if not found_word:
                     continue
 
-                points.append(insert_pt)
-                max_col = max([max_col, normed_rowcol(view, space_pt)[1]])
+            else:
+                matching_char_pt = matching_region.a
+                insert_pt        = matching_region.a
+                var_define_align = False
 
-            # The adjustment takes care of correcting point positions
-            # since spaces are being inserted, which changes the points
-            adjustment = 0
-            for pt in points:
-                pt += adjustment
-                length = max_col - normed_rowcol(view, pt)[1]
-                adjustment += length
-                if length >= 0:
-                    view.insert(edit, pt, '-' * length)
-                else:
-                    view.erase(edit, sublime.Region(pt + length, pt))
+            # If the equal sign is part of a multi-character
+            # operator, bring the first character forward also
+            if view.substr(insert_pt-1) in alignment_prefix_chars and \
+               var_define_align == False:
+                insert_pt -= 1
 
-                if settings.get('mid_line_tabs') and not use_spaces:
-                    adjustment += convert_to_mid_line_tabs(view, edit,
-                        tab_size, pt, length)
+            space_pt = insert_pt
+            while view.substr(space_pt-1) in [' ', '\t']:
+                space_pt -= 1
+                # Replace tabs with spaces for consistent indenting
+                if view.substr(space_pt) == '\t':
+                    view.replace(edit, sublime.Region(space_pt,
+                        space_pt+1), ' ' * tab_size)
+                    matching_char_pt += tab_size - 1
+                    insert_pt += tab_size - 1
+
+            if view.substr(matching_char_pt) in alignment_space_chars:
+                space_pt += 1
+
+            # If the next equal sign is not on this line, skip the line
+            if view.rowcol(matching_char_pt)[0] != row:
+                continue
+
+            points.append(insert_pt)
+            max_col = max([max_col, normed_rowcol(view, space_pt)[1]])
+
+        # The adjustment takes care of correcting point positions
+        # since spaces are being inserted, which changes the points
+        adjustment = 0
+        for pt in points:
+            pt += adjustment
+            length = max_col - normed_rowcol(view, pt)[1]
+            adjustment += length
+            if length >= 0:
+                view.insert(edit, pt, ' ' * length)
+            else:
+                view.erase(edit, sublime.Region(pt + length, pt))
+
+            if settings.get('mid_line_tabs') and not use_spaces:
+                adjustment += convert_to_mid_line_tabs(view, edit,
+                    tab_size, pt, length)
 
 
