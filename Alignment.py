@@ -120,18 +120,93 @@ class AlignmentCommand(sublime_plugin.TextCommand):
                 return
            # perform_mid_line = max_length == 0
 
-       
-
-        # Do the actual alignment of the symbols
+   
+        # Setup the alignment characters
         alignment_chars        = settings.get('alignment_chars') or []
         alignment_prefix_chars = settings.get('alignment_prefix_chars') or []
         alignment_space_chars  = settings.get('alignment_space_chars') or []
 
         alignment_pattern = '|'.join([re.escape(ch) for ch in alignment_chars])
 
+
+        # Check if we want to align variables declarations
+        if settings.get('alignment_align_var_defs'):
+            # Determine if the selected block is variable declarations or just
+            #  variable assignments.
+            is_variable_def_block = False
+            for ln in line_nums:
+                line = view.substr(view.line(view.text_point(ln, 0))) # get current line
+                # If there is an assigment character in this line, ignore it
+                #  and anything after it.
+                l_start = 0
+                result  = re.search(alignment_pattern, line)
+                l_end   = result.start() if result else len(line)
+
+                # Analyze the remaining line portion.
+                words = line[l_start:l_end].split()
+                if len(words) < 2:
+                    # Only 1 string. Can't define a variable with only 1 string.
+                    break
+                elif ',' in line[l_start:l_end]:
+                    # String contains a comma. This could be either:
+                    #  - assignment: a function that returns multiple values
+                    #  - definition: templated type, for example
+                    continue
+                else:
+                    # I think if there are multiple strings without commas
+                    #  we have a variable definition block.
+                    is_variable_def_block = True
+                    break
+
+            if is_variable_def_block:
+                print "DEF"
+                # Add spaces so the last thing before any assignment operators
+                #  line up
+                spaces = []
+                for ln in line_nums:
+                    line    = view.substr(view.line(view.text_point(ln, 0)))
+                    result  = re.search(alignment_pattern, line)
+                    l_start = 0
+                    l_end   = result.start() if result else len(line)
+                    line    = line[l_start:l_end].rstrip()
+
+                    divide_start = 0
+                    divide_end   = 0
+                    whitespace = [' ', '\t']
+                    for i in range(len(line)-1, -1, -1):
+                        if divide_end == 0:
+                            if line[i] in whitespace:
+                                divide_end = i + 1
+                        else:
+                            if line[i] not in whitespace:
+                                divide_start = i + 1
+                                break
+                    spaces.append((divide_start, divide_end))
+                print spaces
+                align_col = 0
+                for s in spaces:
+                    if s[0] > align_col:
+                        align_col = s[0]
+                align_col += 1
+                print align_col
+                for i, ln in zip(range(len(line_nums)), line_nums):
+                    pt = view.text_point(ln, spaces[i][0])
+                    elength = spaces[i][1] - spaces[i][0]
+                    alength = align_col - spaces[i][0]
+
+                    view.erase(edit, sublime.Region(pt, pt + elength))
+                    view.insert(edit, pt, ' '*alength)
+
+
+
+
+
+
         if not alignment_chars:
             # nothing to align on
             return
+
+
 
         points  = []
         max_col = 0
@@ -144,7 +219,7 @@ class AlignmentCommand(sublime_plugin.TextCommand):
             # Find the first character we are going to align correctly
             matching_region = view.find(alignment_pattern, pt)
 
-            if settings.get('alignment_align_var_defs') and \
+            if 0 and settings.get('alignment_align_var_defs') and \
                (not matching_region or \
                view.rowcol(matching_region.a)[0] != row):
 
