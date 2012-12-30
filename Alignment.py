@@ -140,7 +140,7 @@ class AlignmentCommand(sublime_plugin.TextCommand):
                 #  and anything after it.
                 l_start = 0
                 result  = re.search(alignment_pattern, line)
-                l_end   = result.start() if result else len(line)
+                l_end   = result.start() if (result and alignment_pattern) else len(line)
 
                 # Analyze the remaining line portion.
                 words = line[l_start:l_end].split()
@@ -159,16 +159,23 @@ class AlignmentCommand(sublime_plugin.TextCommand):
                     break
 
             if is_variable_def_block:
-                print "DEF"
                 # Add spaces so the last thing before any assignment operators
                 #  line up
                 spaces = []
+                # Get a list of tuples that define the range of whitespace that
+                #  needs to be expanded or removed in order to line up the 
+                #  list of variable declarations.
                 for ln in line_nums:
                     line    = view.substr(view.line(view.text_point(ln, 0)))
                     result  = re.search(alignment_pattern, line)
                     l_start = 0
-                    l_end   = result.start() if result else len(line)
+                    l_end   = result.start() if (result and alignment_pattern) else len(line)
                     line    = line[l_start:l_end].rstrip()
+
+                    # Do a check to see if we should just skip this line
+                    if len(line.split()) < 2:
+                        spaces.append((-1,-1))
+                        continue
 
                     divide_start = 0
                     divide_end   = 0
@@ -182,76 +189,44 @@ class AlignmentCommand(sublime_plugin.TextCommand):
                                 divide_start = i + 1
                                 break
                     spaces.append((divide_start, divide_end))
-                print spaces
-                align_col = 0
-                for s in spaces:
-                    if s[0] > align_col:
-                        align_col = s[0]
-                align_col += 1
-                print align_col
+
+                align_col = max(spaces, key=lambda x: x[0])[0] + 1
+
+                # Remove the old spacing and insert new spacing
                 for i, ln in zip(range(len(line_nums)), line_nums):
-                    pt = view.text_point(ln, spaces[i][0])
-                    elength = spaces[i][1] - spaces[i][0]
-                    alength = align_col - spaces[i][0]
+                    rstart = spaces[i][0]
+                    rend   = spaces[i][1]
+                    if rstart == -1:
+                        continue
+                    pt = view.text_point(ln, rstart)
+                    elength = rend - rstart
+                    alength = align_col - rstart
 
                     view.erase(edit, sublime.Region(pt, pt + elength))
                     view.insert(edit, pt, ' '*alength)
 
-
-
-
-
-
+        # Now handle aligning the assignment characters
+        
         if not alignment_chars:
             # nothing to align on
             return
-
-
 
         points  = []
         max_col = 0
         for row in line_nums:
             pt = view.text_point(row, 0)
 
-            # Determine if the line is a variable declaration or just
-            #  a variable setting operation
-
             # Find the first character we are going to align correctly
             matching_region = view.find(alignment_pattern, pt)
-
-            if 0 and settings.get('alignment_align_var_defs') and \
-               (not matching_region or \
-               view.rowcol(matching_region.a)[0] != row):
-
-                var_define_align = True
-
-                # If we didn't find one of the specified alignment
-                #  characters, try to align the last word. This is
-                #  useful for variable declarations.
-                l = view.line(pt)
-                found_word = False
-                for i in range(l.b, l.a, -1):
-                    char = view.substr(i)
-                    if found_word:
-                        if char == ' ' or char == '\t':
-                            matching_char_pt = i
-                            insert_pt = i
-                            break
-                    else:
-                        if char != ' ' and char != '\t' and char != '\n':
-                            found_word = True
-                if not found_word:
-                    continue
-
-            else:
-                matching_char_pt = matching_region.a
-                insert_pt        = matching_region.a
-                var_define_align = False
+            if not matching_region:
+                continue
+            
+            matching_char_pt = matching_region.a
+            insert_pt        = matching_region.a
 
             # If the equal sign is part of a multi-character
             # operator, bring the first character forward also
-            if view.substr(insert_pt-1) in alignment_prefix_chars and \
-               var_define_align == False:
+            if view.substr(insert_pt-1) in alignment_prefix_chars:
                 insert_pt -= 1
 
             space_pt = insert_pt
